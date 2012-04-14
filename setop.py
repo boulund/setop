@@ -40,7 +40,7 @@ import argparse
 import functools
 import itertools
 
-__VERSION__ = (1, 0)
+__VERSION__ = (0, 1)
 
 
 def line_set(file):

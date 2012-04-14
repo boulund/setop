@@ -11,7 +11,7 @@ if sys.version_info < (3, 0):
 
 import setop
 
-with open("README") as fp:
+with open("README.rst") as fp:
     readme = fp.read()
 
 setup(name="setop",
