@@ -25,17 +25,19 @@ def call_setop(*args, input_=""):
     p.stdin.close()
     p.wait()
     output = p.stdout.read().decode("ascii").rstrip("\n")
+    p.stdout.close()
     return p.returncode, output
 
 
 def call_setop_raw(*args, input_=b""):
-    p = subprocess.Popen([SETOP] + list(args),
+    p = subprocess.Popen(SETOP + list(args),
                          stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE)
     p.stdin.write(input_)
     p.stdin.close()
     p.wait()
     output = p.stdout.read()
+    p.stdout.close()
     return p.returncode, output
     
 
