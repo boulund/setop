@@ -71,6 +71,8 @@ class Test(unittest.TestCase):
         self.a = MockupFile("foo", "bar", "baz")
         self.b = MockupFile("bar", "baz")
         self.c = MockupFile("bar", "quux")
+        self.x = MockupFile("a", "a", "b", "b", "b", "c")
+        self.y = MockupFile("a", "a", "a", "b", "b", "b", "b")
 
     def test_union(self):
         retcode, output = call_setop("-u", *mockfile_paths(self.a, self.b, self.c))
@@ -87,6 +89,19 @@ class Test(unittest.TestCase):
         self.assertEqual(output, sorted_output("foo", "bar", "baz", "spam"))
         
         retcode, output = call_setop("-u")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, "")
+    
+    def test_multiset_union(self):
+        retcode, output = call_setop("-m", "-u", *mockfile_paths(self.a, self.b, self.c))
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("foo", "bar", "baz", "quux"))
+        
+        retcode, output = call_setop("-m", "-u", *mockfile_paths(self.x, self.y))
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("a", "a", "a", "b", "b", "b", "b", "c"))
+        
+        retcode, output = call_setop("-m", "-u")
         self.assertEqual(retcode, 0)
         self.assertEqual(output, "")
     
@@ -108,6 +123,24 @@ class Test(unittest.TestCase):
         self.assertEqual(retcode, 0)
         self.assertEqual(output, "")
     
+    def test_multiset_intersection(self):
+        retcode, output = call_setop("-m", "-i", *mockfile_paths(self.a, self.b, self.c))
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("bar"))
+        
+        retcode, output = call_setop("-m", "-i", *mockfile_paths(self.x, self.y))
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("a", "a", "b", "b", "b"))
+        
+        retcode, output = call_setop("-m", "-i", "-", *mockfile_paths(self.a, self.b),
+                                     input_="spam\n")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, "")
+        
+        retcode, output = call_setop("-m", "-i")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, "")
+    
     def test_difference(self):
         retcode, output = call_setop("-d", *mockfile_paths(self.a, self.b, self.c))
         self.assertEqual(retcode, 0)
@@ -123,6 +156,20 @@ class Test(unittest.TestCase):
         self.assertEqual(output, sorted_output("spam"))
         
         retcode, output = call_setop("-d")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, "")
+    
+    def test_multiset_difference(self):
+        retcode, output = call_setop("-m", "-d", *mockfile_paths(self.y, self.x))
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("a", "b"))
+        
+        retcode, output = call_setop("-m", "-d", "-", *mockfile_paths(self.a, self.b),
+                                     input_="spam\n")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("spam"))
+        
+        retcode, output = call_setop("-m", "-d")
         self.assertEqual(retcode, 0)
         self.assertEqual(output, "")
     
@@ -156,6 +203,69 @@ class Test(unittest.TestCase):
         self.assertEqual(retcode, 0)
         self.assertEqual(output, "")
     
+    def test_multiset_product(self):
+        retcode, output = call_setop("-m", "-p", self.a.path, "-",
+                                     input_="spam\nspam\nham\n")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("foo\tspam",
+                                               "foo\tspam",
+                                               "foo\tham",
+                                               "bar\tspam",
+                                               "bar\tspam",
+                                               "bar\tham",
+                                               "baz\tspam",
+                                               "baz\tspam",
+                                               "baz\tham"))
+        
+        retcode, output = call_setop("-m", "-p", self.a.path, "-",
+                                     input_="spam\nham\n")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("foo\tspam",
+                                               "foo\tham",
+                                               "bar\tspam",
+                                               "bar\tham",
+                                               "baz\tspam",
+                                               "baz\tham"))
+        
+        retcode, output = call_setop("-m", "-p", "-D", ":", self.a.path, "-",
+                                     input_="spam\nham\n")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("foo:spam",
+                                               "foo:ham",
+                                               "bar:spam",
+                                               "bar:ham",
+                                               "baz:spam",
+                                               "baz:ham"))
+        
+        retcode, output = call_setop("-m", "-p", self.a.path,
+                                     input_="spam\nham\n")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("foo", "bar", "baz"))
+        
+        
+    def test_multiset_sum(self):
+        retcode, output = call_setop("-m", "-s", *mockfile_paths(self.x, self.y))
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("a", "a", "a", "a", "a",
+                                               "b", "b", "b", "b", "b", "b", "b",
+                                               "c"))
+        
+        retcode, output = call_setop("-m", "-s", *mockfile_paths(self.y, self.x))
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("a", "a", "a", "a", "a",
+                                               "b", "b", "b", "b", "b", "b", "b",
+                                               "c"))
+        
+        retcode, output = call_setop("-m", "-s", *mockfile_paths(self.a, self.b, self.c))
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output("foo", "bar", "baz",
+                                               "bar", "baz",
+                                               "bar", "quux"))
+        
+        retcode, output = call_setop("-m", "-s")
+        self.assertEqual(retcode, 0)
+        self.assertEqual(output, sorted_output())
+    
     def test_newlines(self):
         a = MockupFileRaw(b"AAA", b"BBB", b"CCC", EOL=b"\n")
         b = MockupFileRaw(b"XXX", b"YYY", EOL=b"\n")
@@ -179,6 +289,9 @@ class Test(unittest.TestCase):
         self.assertGreater(retcode, 0)
         
         retcode, _ = call_setop("-p", "-n", "not-unix-nor-windows", *mockfile_paths(self.a, self.b, self.c))
+        self.assertGreater(retcode, 0)
+        
+        retcode, _ = call_setop("--sum", *mockfile_paths(self.a, self.b, self.c))
         self.assertGreater(retcode, 0)
 
 if __name__ == "__main__":

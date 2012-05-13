@@ -39,27 +39,74 @@ import sys
 import argparse
 import functools
 import itertools
+import collections
+import operator
 
-__VERSION__ = (0, 1)
+__VERSION__ = (0, 2)
 
 
-def line_set(file):
-    """Read lines from a file object into a set."""
+class MultiSet:
+    def __init__(self, it=None):
+        self.data = collections.Counter(it)
+        
+    def discard(self, what):
+        del self.data[what]
+        
+    def __iter__(self):
+        return self.data.elements()
+    
+    def __and__(self, other):
+        if isinstance(other, MultiSet):
+            result = MultiSet(self.data.elements())
+            result.data &= other.data
+            return result
+        else:
+            return NotImplemented
+    
+    def __or__(self, other):
+        if isinstance(other, MultiSet):
+            result = MultiSet(self.data.elements())
+            result.data |= other.data
+            return result
+        else:
+            return NotImplemented
+    
+    def __add__(self, other):
+        if isinstance(other, MultiSet):
+            result = MultiSet(self.data.elements())
+            result.data += other.data
+            return result
+        else:
+            return NotImplemented
+    
+    def __sub__(self, other):
+        if isinstance(other, MultiSet):
+            result = MultiSet(self.data.elements())
+            result.data -= other.data
+            return result
+        else:
+            return NotImplemented
+ 
+
+def line_set(set_impl, file):
+    """Read lines from a file object into a set_impl object."""
     if file.name == "<stdin>": file = file.buffer  # binary mode
 
     strip_trailing_newline = lambda s: s.rstrip(b"\r\n")
-    line_set = set(map(strip_trailing_newline, file.readlines()))
+    line_set = set_impl(map(strip_trailing_newline, file.readlines()))
     line_set.discard(b"")
     return line_set
 
 
-def reduce_line_sets(files, function):
+def reduce_line_sets(set_impl, files, function):
     """Reduce sets of lines using given function."""
     if len(files) >= 1:
-        x, *xs = map(line_set, files)
-        return functools.reduce(function, xs, x)
+        line_set_impl = functools.partial(line_set, set_impl)
+        x, *xs = map(line_set_impl, files)
+        tmp = functools.reduce(function, xs, x)
+        return tmp
     else:
-        return set()
+        return set_impl()
 
 
 class SetOp:
@@ -71,7 +118,7 @@ class SetOp:
         mode = parser.add_mutually_exclusive_group(required=True)
         mode.add_argument("-u", "--union",
                           dest="mode", action="store_const", const="union",
-                          help="lines(file1) UNION lines(file2) ...")
+                          help="lines(file1) UNION lines(file2) UNION file(3) ...")
         mode.add_argument("-i", "--intersection",
                           dest="mode", action="store_const", const="intersection",
                           help="lines(file1) INTERSECTION lines(file2) ...")
@@ -81,6 +128,11 @@ class SetOp:
         mode.add_argument("-p", "--product",
                           dest="mode", action="store_const", const="product",
                           help="lines(file1) x lines(file2) x lines(file3) ...")
+        mode.add_argument("-s", "--sum",
+                          dest="mode", action="store_const", const="sum",
+                          help="lines(file1) + lines(file2) + lines(file3) ... "
+                               "(like union, but sums duplicate elemets over all sets "
+                               "instead of taking maximum; multiset mode only)")
         parser.add_argument("-D", "--delimiter",
                             nargs="?", default="\t",
                             metavar="delimiter",
@@ -90,6 +142,10 @@ class SetOp:
                             default=newline_mode,
                             help="line separator, unix = LF and windows = CR+LF "
                                  "(default value according to detected OS: %s)" % newline_mode)
+        parser.add_argument("-m", "--multiset",
+                            dest="set_implementation", action="store_const",
+                            const=MultiSet, default=set,
+                            help="multiset mode (allow duplicate elements)")
         parser.add_argument("files",
                             nargs="*", type=argparse.FileType("rb"),
                             metavar="file",
@@ -101,19 +157,26 @@ class SetOp:
         arguments = self.parser.parse_args(args)
         files = arguments.files
         mode = arguments.mode
+        set_impl = arguments.set_implementation
         delimiter = arguments.delimiter.encode("ascii")
         EOL = dict(unix=b"\n", windows=b"\r\n")[arguments.newlines]
 
         if mode == "union":
-            output_lines = sorted(reduce_line_sets(files, set.union))
+            output_lines = sorted(reduce_line_sets(set_impl, files, operator.or_))
+        elif mode == "sum":
+            if set_impl != MultiSet:
+                self.parser.exit(1, "Sum is available in multiset mode only\n")
+            output_lines = sorted(reduce_line_sets(set_impl, files, operator.add))
         elif mode == "intersection":
-            output_lines = sorted(reduce_line_sets(files, set.intersection))
+            output_lines = sorted(reduce_line_sets(set_impl, files, operator.and_))
         elif mode == "difference":
-            output_lines = sorted(reduce_line_sets(files, set.difference))
+            output_lines = sorted(reduce_line_sets(set_impl, files, operator.sub))
         elif mode == "product":
-            sorted_line_lists = map(lambda f: sorted(line_set(f)), files)
+            sorted_line_lists = map(lambda f: sorted(line_set(set_impl, f)), files)
             output_lines = (delimiter.join(t)
                             for t in itertools.product(*sorted_line_lists))
+            if set_impl == MultiSet:
+                output_lines = sorted(output_lines)
         
         for line in output_lines:
             sys.stdout.buffer.write(line)
